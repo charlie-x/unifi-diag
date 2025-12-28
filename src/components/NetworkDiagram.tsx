@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useCallback } from 'react'
 import ReactFlow, {
   Node,
   Edge,
@@ -12,12 +12,14 @@ import ReactFlow, {
   MarkerType,
   Handle,
   Position,
+  ReactFlowInstance,
 } from 'reactflow'
 import dagre from 'dagre'
 import 'reactflow/dist/style.css'
 
 import { useDevices } from '@/hooks/useDevices'
 import { useClients } from '@/hooks/useDevices'
+import { useDiagram } from '@/contexts/DiagramContext'
 import { GlassCard } from './ui/GlassCard'
 import { formatSpeed, getDeviceTypeName } from '@/lib/utils'
 import type { UnifiDevice, UnifiPort } from '@/lib/types'
@@ -59,8 +61,8 @@ function PortDot({ port, small }: { port: UnifiPort; small?: boolean }) {
 }
 
 // device node with ports
-function DeviceNodeWithPorts({ data }: { data: { device: UnifiDevice; hasIssues: boolean; connectedPorts: Set<number> } }) {
-  const { device, hasIssues, connectedPorts } = data
+function DeviceNodeWithPorts({ data }: { data: { device: UnifiDevice; hasIssues: boolean; connectedPorts: Set<number>; isHighlighted?: boolean } }) {
+  const { device, hasIssues, connectedPorts, isHighlighted } = data
 
   const bgColor = device.state !== 1
     ? 'bg-gray-800/80'
@@ -74,6 +76,11 @@ function DeviceNodeWithPorts({ data }: { data: { device: UnifiDevice; hasIssues:
     ? 'border-amber-500/50'
     : 'border-green-500/50'
 
+  // highlight styling when zoomed to from alert
+  const highlightClass = isHighlighted
+    ? 'ring-2 ring-cyan-400 ring-offset-2 ring-offset-gray-900 animate-pulse'
+    : ''
+
   const icon = device.type === 'usw'
     ? '[SW]'
     : device.type === 'uap'
@@ -86,7 +93,7 @@ function DeviceNodeWithPorts({ data }: { data: { device: UnifiDevice; hasIssues:
   const regularPorts = device.port_table?.filter(p => p.media !== 'SFP+' && !p.name?.includes('SFP')) || []
 
   return (
-    <div className={`${bgColor} ${borderColor} border rounded-lg px-3 py-2 min-w-[200px] backdrop-blur-sm`}>
+    <div className={`${bgColor} ${borderColor} ${highlightClass} border rounded-lg px-3 py-2 min-w-[200px] backdrop-blur-sm transition-all duration-300`}>
       {/* connection handles */}
       <Handle type="target" position={Position.Top} className="!bg-gray-500 !w-2 !h-2" />
       <Handle type="source" position={Position.Bottom} className="!bg-gray-500 !w-2 !h-2" />
@@ -293,6 +300,7 @@ function buildTopology(devices: UnifiDevice[]): { nodes: Node[]; edges: Edge[] }
 
 export function NetworkDiagram() {
   const { data, isLoading, error } = useDevices()
+  const { setReactFlowInstance, highlightedNodeId } = useDiagram()
 
   const { initialNodes, initialEdges } = useMemo(() => {
     if (!data?.devices) return { initialNodes: [], initialEdges: [] }
@@ -303,13 +311,26 @@ export function NetworkDiagram() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
 
-  // update nodes when data changes
+  // update nodes when data or highlight changes
   useMemo(() => {
     if (initialNodes.length > 0) {
-      setNodes(initialNodes)
+      // add highlight state to nodes
+      const nodesWithHighlight = initialNodes.map(node => ({
+        ...node,
+        data: {
+          ...node.data,
+          isHighlighted: node.id === highlightedNodeId,
+        },
+      }))
+      setNodes(nodesWithHighlight)
       setEdges(initialEdges)
     }
-  }, [initialNodes, initialEdges, setNodes, setEdges])
+  }, [initialNodes, initialEdges, highlightedNodeId, setNodes, setEdges])
+
+  // store react flow instance for zoom control
+  const onInit = useCallback((instance: ReactFlowInstance) => {
+    setReactFlowInstance(instance)
+  }, [setReactFlowInstance])
 
   if (isLoading) {
     return (
@@ -363,6 +384,7 @@ export function NetworkDiagram() {
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onInit={onInit}
           nodeTypes={nodeTypes}
           connectionMode={ConnectionMode.Loose}
           fitView

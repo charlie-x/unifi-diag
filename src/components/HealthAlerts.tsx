@@ -1,6 +1,7 @@
 'use client'
 
 import { useHealth } from '@/hooks/useHealth'
+import { useDiagram } from '@/contexts/DiagramContext'
 import { GlassCard } from './ui/GlassCard'
 import { cn } from '@/lib/utils'
 
@@ -13,6 +14,7 @@ const typeIcons: Record<string, string> = {
 
 export function HealthAlerts() {
   const { data, isLoading, error } = useHealth()
+  const { zoomToNode } = useDiagram()
 
   if (isLoading) {
     return (
@@ -55,14 +57,16 @@ export function HealthAlerts() {
       ) : (
         <div className="space-y-2 max-h-80 overflow-y-auto">
           {alerts.map((alert) => (
-            <div
+            <button
               key={alert.id}
+              onClick={() => zoomToNode(alert.deviceId)}
               className={cn(
-                'rounded-lg border px-3 py-2 text-sm',
+                'w-full text-left rounded-lg border px-3 py-2 text-sm cursor-pointer transition-all hover:scale-[1.02] hover:shadow-lg',
                 alert.severity === 'critical'
-                  ? 'border-red-500/30 bg-red-500/10 text-red-200'
-                  : 'border-amber-500/30 bg-amber-500/10 text-amber-200'
+                  ? 'border-red-500/30 bg-red-500/10 text-red-200 hover:bg-red-500/20'
+                  : 'border-amber-500/30 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20'
               )}
+              title="Click to zoom to device in topology"
             >
               <div className="flex items-center gap-2">
                 <span className="font-mono text-xs opacity-60">
@@ -72,9 +76,10 @@ export function HealthAlerts() {
                 {alert.port && (
                   <span className="text-xs opacity-60">Port {alert.port}</span>
                 )}
+                <span className="ml-auto text-xs opacity-40">[click to locate]</span>
               </div>
               <p className="mt-0.5 opacity-80">{alert.message}</p>
-            </div>
+            </button>
           ))}
         </div>
       )}
