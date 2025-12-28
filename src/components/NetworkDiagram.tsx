@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useCallback } from 'react'
+import { useMemo } from 'react'
 import ReactFlow, {
   Node,
   Edge,
@@ -9,57 +9,58 @@ import ReactFlow, {
   useNodesState,
   useEdgesState,
   ConnectionMode,
+  MarkerType,
+  Handle,
+  Position,
 } from 'reactflow'
 import dagre from 'dagre'
 import 'reactflow/dist/style.css'
 
 import { useDevices } from '@/hooks/useDevices'
+import { useClients } from '@/hooks/useDevices'
 import { GlassCard } from './ui/GlassCard'
 import { formatSpeed, getDeviceTypeName } from '@/lib/utils'
-import type { UnifiDevice } from '@/lib/types'
+import type { UnifiDevice, UnifiPort } from '@/lib/types'
 
-// dagre layout configuration
-const dagreGraph = new dagre.graphlib.Graph()
-dagreGraph.setDefaultEdgeLabel(() => ({}))
-
-const nodeWidth = 180
-const nodeHeight = 80
-
-function getLayoutedElements(
-  nodes: Node[],
-  edges: Edge[],
-  direction = 'TB'
-): { nodes: Node[]; edges: Edge[] } {
-  const isHorizontal = direction === 'LR'
-  dagreGraph.setGraph({ rankdir: direction, ranksep: 100, nodesep: 50 })
-
-  nodes.forEach((node) => {
-    dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight })
-  })
-
-  edges.forEach((edge) => {
-    dagreGraph.setEdge(edge.source, edge.target)
-  })
-
-  dagre.layout(dagreGraph)
-
-  const layoutedNodes = nodes.map((node) => {
-    const nodeWithPosition = dagreGraph.node(node.id)
-    return {
-      ...node,
-      position: {
-        x: nodeWithPosition.x - nodeWidth / 2,
-        y: nodeWithPosition.y - nodeHeight / 2,
-      },
-    }
-  })
-
-  return { nodes: layoutedNodes, edges }
+// speed colour mapping
+const speedColors: Record<string, string> = {
+  '10G': '#22c55e',   // green
+  '2.5G': '#3b82f6',  // blue
+  '1G': '#a855f7',    // purple
+  '100M': '#f59e0b',  // amber
+  'Down': '#6b7280',  // gray
 }
 
-// custom node component
-function DeviceNode({ data }: { data: { device: UnifiDevice; hasIssues: boolean } }) {
-  const { device, hasIssues } = data
+function getSpeedColor(speed: number): string {
+  if (speed >= 10000) return speedColors['10G']
+  if (speed >= 2500) return speedColors['2.5G']
+  if (speed >= 1000) return speedColors['1G']
+  if (speed > 0) return speedColors['100M']
+  return speedColors['Down']
+}
+
+// port status component
+function PortDot({ port, small }: { port: UnifiPort; small?: boolean }) {
+  const hasErrors = port.rx_errors > 100
+  const isHot = port.sfp_temperature && parseFloat(port.sfp_temperature) > 70
+
+  let color = port.up ? getSpeedColor(port.speed) : '#374151'
+  if (hasErrors || isHot) color = '#ef4444'
+
+  const size = small ? 'w-2 h-2' : 'w-3 h-3'
+
+  return (
+    <div
+      className={`${size} rounded-full`}
+      style={{ backgroundColor: color }}
+      title={`Port ${port.port_idx}: ${formatSpeed(port.speed)}${hasErrors ? ' (errors)' : ''}${isHot ? ' (hot)' : ''}`}
+    />
+  )
+}
+
+// device node with ports
+function DeviceNodeWithPorts({ data }: { data: { device: UnifiDevice; hasIssues: boolean; connectedPorts: Set<number> } }) {
+  const { device, hasIssues, connectedPorts } = data
 
   const bgColor = device.state !== 1
     ? 'bg-gray-800/80'
@@ -79,21 +80,87 @@ function DeviceNode({ data }: { data: { device: UnifiDevice; hasIssues: boolean 
     ? '[AP]'
     : '[GW]'
 
+  // get active ports for switches
+  const activePorts = device.port_table?.filter(p => p.up) || []
+  const sfpPorts = device.port_table?.filter(p => p.media === 'SFP+' || p.name?.includes('SFP')) || []
+  const regularPorts = device.port_table?.filter(p => p.media !== 'SFP+' && !p.name?.includes('SFP')) || []
+
   return (
-    <div
-      className={`${bgColor} ${borderColor} border rounded-lg px-3 py-2 min-w-[160px] backdrop-blur-sm`}
-    >
-      <div className="flex items-center gap-2">
+    <div className={`${bgColor} ${borderColor} border rounded-lg px-3 py-2 min-w-[200px] backdrop-blur-sm`}>
+      {/* connection handles */}
+      <Handle type="target" position={Position.Top} className="!bg-gray-500 !w-2 !h-2" />
+      <Handle type="source" position={Position.Bottom} className="!bg-gray-500 !w-2 !h-2" />
+
+      {/* header */}
+      <div className="flex items-center gap-2 mb-2">
         <span className="font-mono text-gray-400 text-sm">{icon}</span>
         <div className="flex-1 min-w-0">
           <p className="font-medium text-white text-sm truncate">{device.name}</p>
           <p className="text-[10px] text-gray-400">{device.ip}</p>
         </div>
       </div>
-      <div className="mt-1 flex items-center gap-2 text-[10px]">
-        <span className="text-gray-500">{getDeviceTypeName(device.type)}</span>
+
+      {/* port grid for switches */}
+      {device.type === 'usw' && device.port_table && (
+        <div className="space-y-1.5">
+          {/* regular ports */}
+          {regularPorts.length > 0 && (
+            <div>
+              <div className="flex flex-wrap gap-0.5">
+                {regularPorts.slice(0, 16).map(port => (
+                  <div
+                    key={port.port_idx}
+                    className={`w-4 h-4 rounded text-[8px] flex items-center justify-center font-mono ${
+                      connectedPorts.has(port.port_idx)
+                        ? 'ring-1 ring-white/50'
+                        : ''
+                    }`}
+                    style={{
+                      backgroundColor: port.up ? getSpeedColor(port.speed) + '40' : '#1f2937',
+                      borderLeft: `2px solid ${port.up ? getSpeedColor(port.speed) : '#374151'}`,
+                    }}
+                    title={`Port ${port.port_idx}: ${formatSpeed(port.speed)}`}
+                  >
+                    {port.port_idx}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* sfp ports */}
+          {sfpPorts.length > 0 && (
+            <div className="flex gap-1">
+              {sfpPorts.map(port => (
+                <div
+                  key={port.port_idx}
+                  className={`px-1.5 py-0.5 rounded text-[8px] font-mono ${
+                    connectedPorts.has(port.port_idx)
+                      ? 'ring-1 ring-white/50'
+                      : ''
+                  }`}
+                  style={{
+                    backgroundColor: port.up ? getSpeedColor(port.speed) + '40' : '#1f2937',
+                    borderLeft: `2px solid ${port.up ? getSpeedColor(port.speed) : '#374151'}`,
+                  }}
+                  title={`SFP ${port.port_idx}: ${formatSpeed(port.speed)}${port.sfp_temperature ? ` ${parseFloat(port.sfp_temperature).toFixed(0)}C` : ''}`}
+                >
+                  S{port.port_idx - (regularPorts.length || 0)}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* stats row */}
+      <div className="mt-1.5 flex items-center gap-2 text-[10px] text-gray-400">
+        <span>{getDeviceTypeName(device.type)}</span>
+        {device.type === 'usw' && (
+          <span>{activePorts.length}/{device.port_table?.length || 0} ports</span>
+        )}
         {device.general_temperature && (
-          <span className={device.general_temperature > 50 ? 'text-amber-400' : 'text-gray-500'}>
+          <span className={device.general_temperature > 50 ? 'text-amber-400' : ''}>
             {device.general_temperature}C
           </span>
         )}
@@ -103,24 +170,102 @@ function DeviceNode({ data }: { data: { device: UnifiDevice; hasIssues: boolean 
 }
 
 const nodeTypes = {
-  device: DeviceNode,
+  deviceWithPorts: DeviceNodeWithPorts,
+}
+
+// dagre layout
+function getLayoutedElements(
+  nodes: Node[],
+  edges: Edge[],
+  direction = 'TB'
+): { nodes: Node[]; edges: Edge[] } {
+  const g = new dagre.graphlib.Graph()
+  g.setDefaultEdgeLabel(() => ({}))
+  g.setGraph({ rankdir: direction, ranksep: 120, nodesep: 80 })
+
+  nodes.forEach((node) => {
+    const width = node.data.device.type === 'usw' ? 220 : 200
+    const height = node.data.device.type === 'usw' ? 120 : 80
+    g.setNode(node.id, { width, height })
+  })
+
+  edges.forEach((edge) => {
+    g.setEdge(edge.source, edge.target)
+  })
+
+  dagre.layout(g)
+
+  const layoutedNodes = nodes.map((node) => {
+    const nodeWithPosition = g.node(node.id)
+    const width = node.data.device.type === 'usw' ? 220 : 200
+    const height = node.data.device.type === 'usw' ? 120 : 80
+    return {
+      ...node,
+      position: {
+        x: nodeWithPosition.x - width / 2,
+        y: nodeWithPosition.y - height / 2,
+      },
+    }
+  })
+
+  return { nodes: layoutedNodes, edges }
 }
 
 function buildTopology(devices: UnifiDevice[]): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = []
   const edges: Edge[] = []
-  const deviceMap = new Map<string, UnifiDevice>()
 
-  // build device map by name and mac
-  devices.forEach((d) => {
-    deviceMap.set(d.name, d)
-    deviceMap.set(d.mac, d)
+  // track which ports are used for uplinks
+  const connectedPortsMap = new Map<string, Set<number>>()
+  devices.forEach(d => connectedPortsMap.set(d._id, new Set()))
+
+  // create edges first to know connected ports
+  devices.forEach((device) => {
+    if (device.last_uplink) {
+      const parentDevice = devices.find(
+        (d) => d.name === device.last_uplink?.uplink_device_name
+      )
+
+      if (parentDevice) {
+        const remotePort = device.last_uplink.uplink_remote_port
+        const localPort = device.last_uplink.port_idx
+
+        // mark ports as connected
+        connectedPortsMap.get(parentDevice._id)?.add(remotePort)
+        connectedPortsMap.get(device._id)?.add(localPort)
+
+        // get link speed
+        const uplinkPort = parentDevice.port_table?.find(
+          (p) => p.port_idx === remotePort
+        )
+        const speed = uplinkPort?.speed || 0
+        const speedLabel = formatSpeed(speed)
+        const color = getSpeedColor(speed)
+
+        edges.push({
+          id: `${parentDevice._id}-${device._id}`,
+          source: parentDevice._id,
+          target: device._id,
+          label: `P${remotePort} -- ${speedLabel} -- P${localPort}`,
+          style: {
+            stroke: color,
+            strokeWidth: speed >= 10000 ? 3 : speed >= 2500 ? 2.5 : 2,
+          },
+          labelStyle: { fill: '#e5e7eb', fontSize: 10, fontFamily: 'monospace' },
+          labelBgStyle: { fill: '#1e293b', fillOpacity: 0.9 },
+          labelBgPadding: [4, 2] as [number, number],
+          labelBgBorderRadius: 4,
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: color,
+            width: 15,
+            height: 15,
+          },
+          animated: speed >= 10000,
+        })
+      }
+    }
   })
-
-  // find gateway (root node) - device with no uplink or type ugw/udm
-  const gateway = devices.find(
-    (d) => d.type === 'ugw' || d.type === 'udm' || !d.last_uplink
-  )
 
   // create nodes
   devices.forEach((device) => {
@@ -133,37 +278,14 @@ function buildTopology(devices: UnifiDevice[]): { nodes: Node[]; edges: Edge[] }
 
     nodes.push({
       id: device._id,
-      type: 'device',
+      type: 'deviceWithPorts',
       position: { x: 0, y: 0 },
-      data: { device, hasIssues },
+      data: {
+        device,
+        hasIssues,
+        connectedPorts: connectedPortsMap.get(device._id) || new Set(),
+      },
     })
-  })
-
-  // create edges from uplink data
-  devices.forEach((device) => {
-    if (device.last_uplink) {
-      const parentDevice = devices.find(
-        (d) => d.name === device.last_uplink?.uplink_device_name
-      )
-
-      if (parentDevice) {
-        // determine link speed from the uplink port
-        const uplinkPort = parentDevice.port_table?.find(
-          (p) => p.port_idx === device.last_uplink?.uplink_remote_port
-        )
-        const speed = uplinkPort?.speed || 0
-
-        edges.push({
-          id: `${parentDevice._id}-${device._id}`,
-          source: parentDevice._id,
-          target: device._id,
-          label: formatSpeed(speed),
-          style: { stroke: speed >= 10000 ? '#22c55e' : speed >= 2500 ? '#3b82f6' : '#6b7280' },
-          labelStyle: { fill: '#9ca3af', fontSize: 10 },
-          labelBgStyle: { fill: '#1e293b', fillOpacity: 0.8 },
-        })
-      }
-    }
   })
 
   return getLayoutedElements(nodes, edges)
@@ -192,7 +314,7 @@ export function NetworkDiagram() {
   if (isLoading) {
     return (
       <GlassCard title="Network Topology">
-        <div className="h-96 flex items-center justify-center">
+        <div className="h-[500px] flex items-center justify-center">
           <div className="animate-pulse text-gray-400">Loading topology...</div>
         </div>
       </GlassCard>
@@ -202,7 +324,7 @@ export function NetworkDiagram() {
   if (error) {
     return (
       <GlassCard title="Network Topology">
-        <div className="h-96 flex items-center justify-center text-red-400">
+        <div className="h-[500px] flex items-center justify-center text-red-400">
           Failed to load topology
         </div>
       </GlassCard>
@@ -211,7 +333,31 @@ export function NetworkDiagram() {
 
   return (
     <GlassCard title="Network Topology" subtitle={`${nodes.length} devices`}>
-      <div className="h-96 rounded-lg overflow-hidden border border-white/10">
+      {/* legend */}
+      <div className="flex flex-wrap gap-3 mb-3 text-xs">
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-1 rounded" style={{ backgroundColor: speedColors['10G'] }} />
+          <span className="text-gray-400">10G</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-1 rounded" style={{ backgroundColor: speedColors['2.5G'] }} />
+          <span className="text-gray-400">2.5G</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-1 rounded" style={{ backgroundColor: speedColors['1G'] }} />
+          <span className="text-gray-400">1G</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-1 rounded" style={{ backgroundColor: speedColors['100M'] }} />
+          <span className="text-gray-400">100M</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-1 rounded" style={{ backgroundColor: speedColors['Down'] }} />
+          <span className="text-gray-400">Down</span>
+        </div>
+      </div>
+
+      <div className="h-[500px] rounded-lg overflow-hidden border border-white/10">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -220,9 +366,9 @@ export function NetworkDiagram() {
           nodeTypes={nodeTypes}
           connectionMode={ConnectionMode.Loose}
           fitView
-          fitViewOptions={{ padding: 0.2 }}
-          minZoom={0.5}
-          maxZoom={1.5}
+          fitViewOptions={{ padding: 0.15 }}
+          minZoom={0.3}
+          maxZoom={2}
           proOptions={{ hideAttribution: true }}
         >
           <Background color="#374151" gap={20} size={1} />
