@@ -13,6 +13,16 @@ A Next.js/React dashboard with glass UI for monitoring UniFi network infrastruct
 
 ## Screenshots
 
+<img width="545" height="242" alt="image" src="https://github.com/user-attachments/assets/c659c53c-d1b7-4a9c-8d76-fe4fedcb4a4f" />
+
+<img width="1504" height="175" alt="image" src="https://github.com/user-attachments/assets/8dcca848-c5f1-4677-af85-66bd5744937b" />
+
+<img width="315" height="234" alt="image" src="https://github.com/user-attachments/assets/2192614c-f880-42c8-8314-c6d394832261" />
+
+<img width="743" height="464" alt="image" src="https://github.com/user-attachments/assets/b3485211-0627-45cc-8215-fc65531ebca4" />
+
+<img width="551" height="332" alt="image" src="https://github.com/user-attachments/assets/78e8ab3c-93cf-4f72-8c51-6f01ee51d65f" />
+
 The dashboard displays:
 - Health alerts panel with critical/warning issues (clickable to locate)
 - Interactive network topology diagram with port-level detail
