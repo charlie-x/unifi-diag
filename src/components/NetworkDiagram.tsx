@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useCallback } from 'react'
+import { useMemo, useCallback, useEffect, useRef } from 'react'
 import ReactFlow, {
   Node,
   Edge,
@@ -248,30 +248,39 @@ function buildTopology(devices: UnifiDevice[]): { nodes: Node[]; edges: Edge[] }
       if (parentDevice) {
         const remotePort = device.last_uplink.uplink_remote_port
         const localPort = device.last_uplink.port_idx
+        const isMesh = device.last_uplink.type === 'wireless'
 
-        // mark ports as connected
-        connectedPortsMap.get(parentDevice._id)?.add(remotePort)
-        connectedPortsMap.get(device._id)?.add(localPort)
+        // mark ports as connected (only for wired connections)
+        if (!isMesh) {
+          connectedPortsMap.get(parentDevice._id)?.add(remotePort)
+          connectedPortsMap.get(device._id)?.add(localPort)
+        }
 
         // get link speed
         const uplinkPort = parentDevice.port_table?.find(
           (p) => p.port_idx === remotePort
         )
-        const speed = uplinkPort?.speed || 0
-        const speedLabel = formatSpeed(speed)
-        const color = getSpeedColor(speed)
+        const speed = isMesh ? (device.last_uplink.speed || 0) : (uplinkPort?.speed || 0)
+        const speedLabel = isMesh ? 'Mesh' : formatSpeed(speed)
+        const color = isMesh ? '#06b6d4' : getSpeedColor(speed) // cyan for mesh
+
+        // build label
+        const label = isMesh
+          ? `~~ ${speedLabel} ~~`
+          : `P${remotePort} -- ${speedLabel} -- P${localPort}`
 
         edges.push({
           id: `${parentDevice._id}-${device._id}`,
           source: parentDevice._id,
           target: device._id,
-          label: `P${remotePort} -- ${speedLabel} -- P${localPort}`,
+          label,
           style: {
             stroke: color,
-            strokeWidth: speed >= 10000 ? 3 : speed >= 2500 ? 2.5 : 2,
+            strokeWidth: isMesh ? 2 : (speed >= 10000 ? 3 : speed >= 2500 ? 2.5 : 2),
+            strokeDasharray: isMesh ? '8 4' : undefined, // dashed for mesh
           },
           labelStyle: { fill: '#e5e7eb', fontSize: 10, fontFamily: 'monospace' },
-          labelBgStyle: { fill: '#1e293b', fillOpacity: 0.9 },
+          labelBgStyle: { fill: isMesh ? '#164e63' : '#1e293b', fillOpacity: 0.9 },
           labelBgPadding: [4, 2] as [number, number],
           labelBgBorderRadius: 4,
           markerEnd: {
@@ -280,7 +289,7 @@ function buildTopology(devices: UnifiDevice[]): { nodes: Node[]; edges: Edge[] }
             width: 15,
             height: 15,
           },
-          animated: speed >= 10000,
+          animated: isMesh || speed >= 10000, // animate mesh links
         })
       }
     }
@@ -314,6 +323,9 @@ export function NetworkDiagram() {
   const { data, isLoading, error } = useDevices()
   const { setReactFlowInstance, highlightedNodeId } = useDiagram()
 
+  // track previous data to detect actual data changes vs highlight-only changes
+  const prevDevicesRef = useRef<string | null>(null)
+
   const { initialNodes, initialEdges } = useMemo(() => {
     if (!data?.devices) return { initialNodes: [], initialEdges: [] }
     const { nodes, edges } = buildTopology(data.devices)
@@ -323,10 +335,16 @@ export function NetworkDiagram() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
 
-  // update nodes when data or highlight changes
-  useMemo(() => {
-    if (initialNodes.length > 0) {
-      // add highlight state to nodes
+  // update nodes when data changes (full rebuild) or highlight changes (preserve positions)
+  useEffect(() => {
+    if (initialNodes.length === 0) return
+
+    // create a simple hash of device IDs to detect data changes
+    const devicesHash = data?.devices?.map(d => d._id).join(',') || ''
+    const isDataChange = prevDevicesRef.current !== devicesHash
+
+    if (isDataChange) {
+      // full rebuild - data actually changed
       const nodesWithHighlight = initialNodes.map(node => ({
         ...node,
         data: {
@@ -336,8 +354,20 @@ export function NetworkDiagram() {
       }))
       setNodes(nodesWithHighlight)
       setEdges(initialEdges)
+      prevDevicesRef.current = devicesHash
+    } else {
+      // highlight-only change - preserve positions
+      setNodes(currentNodes =>
+        currentNodes.map(node => ({
+          ...node,
+          data: {
+            ...node.data,
+            isHighlighted: node.id === highlightedNodeId,
+          },
+        }))
+      )
     }
-  }, [initialNodes, initialEdges, highlightedNodeId, setNodes, setEdges])
+  }, [initialNodes, initialEdges, highlightedNodeId, data?.devices, setNodes, setEdges])
 
   // store react flow instance for zoom control
   const onInit = useCallback((instance: ReactFlowInstance) => {
@@ -387,6 +417,10 @@ export function NetworkDiagram() {
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-1 rounded" style={{ backgroundColor: speedColors['Down'] }} />
           <span className="text-gray-400">Down</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-6 h-0.5 border-t-2 border-dashed" style={{ borderColor: '#06b6d4' }} />
+          <span className="text-gray-400">Mesh</span>
         </div>
       </div>
 

@@ -34,7 +34,10 @@ export interface UnifiUplink {
   uplink_mac: string
   uplink_device_name: string
   uplink_remote_port: number
-  type: string
+  type: string  // 'wire' or 'wireless' (mesh)
+  speed?: number
+  rssi?: number  // signal strength for wireless uplinks
+  channel?: number
 }
 
 export interface UnifiDevice {

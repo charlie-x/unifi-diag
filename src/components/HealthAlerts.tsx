@@ -73,7 +73,7 @@ export function HealthAlerts() {
                   {typeIcons[alert.type] || '[?]'}
                 </span>
                 <span className="font-medium">{alert.device}</span>
-                {alert.port && (
+                {alert.port !== undefined && (
                   <span className="text-xs opacity-60">Port {alert.port}</span>
                 )}
                 <span className="ml-auto text-xs opacity-40">[click to locate]</span>
