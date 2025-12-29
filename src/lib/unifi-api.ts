@@ -5,6 +5,18 @@ import { UnifiDevice, UnifiClient } from './types'
 const UNIFI_API_URL = process.env.UNIFI_API_URL || ''
 const UNIFI_API_KEY = process.env.UNIFI_API_KEY || ''
 
+// check if credentials are configured
+export function isConfigured(): boolean {
+  return Boolean(UNIFI_API_URL && UNIFI_API_KEY)
+}
+
+export class ConfigurationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ConfigurationError'
+  }
+}
+
 // simple in-memory cache
 interface CacheEntry<T> {
   data: T
@@ -22,6 +34,12 @@ const CACHE_TTL = {
 }
 
 async function fetchUnifi<T>(endpoint: string): Promise<T> {
+  if (!isConfigured()) {
+    throw new ConfigurationError(
+      'UniFi API not configured. Set UNIFI_API_URL and UNIFI_API_KEY in .env.local'
+    )
+  }
+
   const response = await fetch(`${UNIFI_API_URL}/${endpoint}`, {
     method: 'GET',
     headers: {

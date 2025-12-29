@@ -24,8 +24,8 @@ export function SettingsForm() {
             Configure your UniFi credentials in <code className="px-1 py-0.5 rounded bg-black/30">.env.local</code>:
           </p>
           <pre className="mt-2 text-xs bg-black/30 rounded p-2 overflow-x-auto">
-{`UNIFI_API_URL=https://192.168.1.1/proxy/network/api/s/default
-UNIFI_API_KEY=your-api-key-here`}
+{`UNIFI_API_URL=https://<controller-ip>/proxy/network/api/s/default
+UNIFI_API_KEY=<your-api-key>`}
           </pre>
         </div>
 

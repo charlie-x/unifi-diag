@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getDevices } from '@/lib/unifi-api'
+import { getDevices, ConfigurationError } from '@/lib/unifi-api'
 import type { DevicesResponse } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -18,6 +18,14 @@ export async function GET() {
     return NextResponse.json(response)
   } catch (error) {
     console.error('Failed to fetch devices:', error)
+
+    if (error instanceof ConfigurationError) {
+      return NextResponse.json(
+        { error: error.message, code: 'NOT_CONFIGURED' },
+        { status: 503 }
+      )
+    }
+
     return NextResponse.json(
       { error: 'Failed to fetch devices from UniFi controller' },
       { status: 500 }

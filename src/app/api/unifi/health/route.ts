@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getDevices } from '@/lib/unifi-api'
+import { getDevices, ConfigurationError } from '@/lib/unifi-api'
 import type { HealthAlert, HealthResponse, UnifiDevice, UnifiPort, THRESHOLDS } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -157,6 +157,14 @@ export async function GET() {
     return NextResponse.json(response)
   } catch (error) {
     console.error('Failed to check health:', error)
+
+    if (error instanceof ConfigurationError) {
+      return NextResponse.json(
+        { error: error.message, code: 'NOT_CONFIGURED' },
+        { status: 503 }
+      )
+    }
+
     return NextResponse.json(
       { error: 'Failed to check health' },
       { status: 500 }

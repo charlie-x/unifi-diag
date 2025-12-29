@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getClients } from '@/lib/unifi-api'
+import { getClients, ConfigurationError } from '@/lib/unifi-api'
 import type { ClientsResponse } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -17,6 +17,14 @@ export async function GET() {
     return NextResponse.json(response)
   } catch (error) {
     console.error('Failed to fetch clients:', error)
+
+    if (error instanceof ConfigurationError) {
+      return NextResponse.json(
+        { error: error.message, code: 'NOT_CONFIGURED' },
+        { status: 503 }
+      )
+    }
+
     return NextResponse.json(
       { error: 'Failed to fetch clients from UniFi controller' },
       { status: 500 }

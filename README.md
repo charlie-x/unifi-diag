@@ -5,30 +5,41 @@ A Next.js/React dashboard with glass UI for monitoring UniFi network infrastruct
 ## Features
 
 - **Device Discovery**: Lists all UniFi devices (switches, APs, gateways)
-- **Network Topology**: Interactive diagram showing device hierarchy and uplink speeds
+- **Network Topology**: Interactive diagram showing device hierarchy, ports, and uplink speeds
 - **Port Status**: Per-switch port grid with speed, PoE, and error indicators
 - **Health Monitoring**: Alerts for overheating SFPs, packet errors, and available upgrades
+- **Click-to-Locate**: Click health alerts to zoom to affected device in topology
 - **Auto-refresh**: Data updates every 30 seconds
 
 ## Screenshots
 
 The dashboard displays:
-- Health alerts panel with critical/warning issues
-- Interactive network topology diagram
+- Health alerts panel with critical/warning issues (clickable to locate)
+- Interactive network topology diagram with port-level detail
 - Expandable device list with port details
 
-## Setup
+## Quick Start
 
-1. Clone the repository
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/charlie-x/unifi-diag.git
+   cd unifi-diag
+   ```
+
 2. Install dependencies:
    ```bash
    npm install
    ```
 
-3. Copy `.env.example` to `.env.local` and configure:
+3. Configure your UniFi controller credentials:
+   ```bash
+   cp .env.example .env.local
+   ```
+
+   Edit `.env.local` with your controller details:
    ```env
-   UNIFI_API_URL=https://192.168.1.1/proxy/network/api/s/default
-   UNIFI_API_KEY=your-api-key-here
+   UNIFI_API_URL=https://<controller-ip>/proxy/network/api/s/default
+   UNIFI_API_KEY=<your-api-key>
    ```
 
 4. Run the development server:
@@ -38,12 +49,29 @@ The dashboard displays:
 
 5. Open [http://localhost:3000](http://localhost:3000)
 
-## UniFi API Key
+## UniFi API Configuration
 
-Generate an API key in your UniFi Network Controller:
-1. Go to Settings > System > Advanced
-2. Enable "Local API"
-3. Create a new API key
+### Finding Your API URL
+
+The URL format depends on your UniFi controller type:
+
+| Controller Type | URL Format |
+|-----------------|------------|
+| UniFi OS (UDM, UDM-Pro, UDR, etc.) | `https://<ip>/proxy/network/api/s/default` |
+| Self-hosted Controller | `https://<ip>:8443/api/s/default` |
+| UniFi Cloud Key | `https://<ip>/api/s/default` |
+
+Replace `default` with your site name if you have multiple sites.
+
+### Generating an API Key
+
+1. Log into your UniFi Network Controller
+2. Go to **Settings** > **System** > **Advanced**
+3. Scroll to **API** section
+4. Click **Create API Key**
+5. Copy the key (you won't be able to see it again)
+
+**Note**: API key authentication requires UniFi Network 7.0+ or UniFi OS 2.0+. Older versions may require username/password authentication (not currently supported by this app).
 
 ## Health Thresholds
 
@@ -77,6 +105,15 @@ npm run start   # Start production server
 npm run lint    # Run ESLint
 ```
 
+## SSL Certificates
+
+If your UniFi controller uses a self-signed certificate (common for local deployments), the app handles this automatically in development mode via `NODE_TLS_REJECT_UNAUTHORIZED=0`.
+
+For production, consider:
+- Installing the controller's CA certificate on your system
+- Using a reverse proxy with a valid certificate
+- Setting `NODE_TLS_REJECT_UNAUTHORIZED=0` (not recommended for production)
+
 ## License
 
-Private - for internal use only.
+MIT
