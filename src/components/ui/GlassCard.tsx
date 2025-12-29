@@ -2,22 +2,22 @@
 
 import { cn } from '@/lib/utils'
 import { ReactNode } from 'react'
+import LiquidGlass from 'liquid-glass-react'
 
 interface GlassCardProps {
   children: ReactNode
   className?: string
   title?: string
   subtitle?: string
+  cracks?: number
 }
 
-export function GlassCard({ children, className, title, subtitle }: GlassCardProps) {
+export function GlassCard({ children, className, title, subtitle, cracks = 0 }: GlassCardProps) {
   return (
-    <div
-      className={cn(
-        'rounded-xl border border-white/10 bg-white/5 backdrop-blur-xl',
-        'shadow-lg shadow-black/20',
-        className
-      )}
+    <LiquidGlass
+      fillContainer
+      cracks={cracks}
+      className={cn('rounded-xl', className)}
     >
       {(title || subtitle) && (
         <div className="border-b border-white/10 px-4 py-3">
@@ -26,6 +26,6 @@ export function GlassCard({ children, className, title, subtitle }: GlassCardPro
         </div>
       )}
       <div className="p-4">{children}</div>
-    </div>
+    </LiquidGlass>
   )
 }
