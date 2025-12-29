@@ -180,6 +180,19 @@ const nodeTypes = {
   deviceWithPorts: DeviceNodeWithPorts,
 }
 
+// calculate node dimensions based on port count
+function getNodeDimensions(device: UnifiDevice): { width: number; height: number } {
+  if (device.type === 'usw' && device.port_table) {
+    const portCount = device.port_table.length
+    // width scales with port count (16 ports = ~280px, 48 ports = ~350px)
+    const width = Math.max(250, 200 + Math.ceil(portCount / 8) * 25)
+    const height = 140
+    return { width, height }
+  }
+  // gateways and APs
+  return { width: 200, height: 80 }
+}
+
 // dagre layout
 function getLayoutedElements(
   nodes: Node[],
@@ -188,11 +201,11 @@ function getLayoutedElements(
 ): { nodes: Node[]; edges: Edge[] } {
   const g = new dagre.graphlib.Graph()
   g.setDefaultEdgeLabel(() => ({}))
-  g.setGraph({ rankdir: direction, ranksep: 120, nodesep: 80 })
+  // increased nodesep to prevent horizontal overlap
+  g.setGraph({ rankdir: direction, ranksep: 150, nodesep: 120 })
 
   nodes.forEach((node) => {
-    const width = node.data.device.type === 'usw' ? 220 : 200
-    const height = node.data.device.type === 'usw' ? 120 : 80
+    const { width, height } = getNodeDimensions(node.data.device)
     g.setNode(node.id, { width, height })
   })
 
@@ -204,8 +217,7 @@ function getLayoutedElements(
 
   const layoutedNodes = nodes.map((node) => {
     const nodeWithPosition = g.node(node.id)
-    const width = node.data.device.type === 'usw' ? 220 : 200
-    const height = node.data.device.type === 'usw' ? 120 : 80
+    const { width, height } = getNodeDimensions(node.data.device)
     return {
       ...node,
       position: {
