@@ -6,6 +6,7 @@ const backgroundImages = [
   'https://images.unsplash.com/photo-1541701494587-cb58502866ab?q=80&w=2340&auto=format&fit=crop',
   'https://plus.unsplash.com/premium_photo-1667128695621-ca19d844a643?q=80&w=2340&auto=format&fit=crop',
   'https://images.unsplash.com/photo-1763760243463-cbfb66c7fcc3?q=80&w=3316&auto=format&fit=crop',
+  'https://images.unsplash.com/photo-1763688506750-0da09fe27324?q=80&w=3264&auto=format&fit=crop',
 ]
 
 export function BackgroundSlideshow() {
@@ -19,7 +20,7 @@ export function BackgroundSlideshow() {
         setCurrentIndex((prev) => (prev + 1) % backgroundImages.length)
         setIsTransitioning(false)
       }, 1000) // fade duration
-    }, 10000) // rotate every 10 seconds
+    }, 60000) // rotate every 60 seconds
 
     return () => clearInterval(interval)
   }, [])
@@ -34,14 +35,14 @@ export function BackgroundSlideshow() {
         <div
           key={url}
           className={`absolute inset-0 bg-cover bg-center transition-opacity duration-1000 ${
-            index === currentIndex && !isTransitioning ? 'opacity-30' : 'opacity-0'
+            index === currentIndex && !isTransitioning ? 'opacity-70' : 'opacity-0'
           }`}
           style={{ backgroundImage: `url(${url})` }}
         />
       ))}
 
       {/* overlay for better text contrast */}
-      <div className="absolute inset-0 bg-black/40" />
+      <div className="absolute inset-0 bg-black/20" />
     </div>
   )
 }

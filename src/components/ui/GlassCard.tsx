@@ -17,7 +17,15 @@ export function GlassCard({ children, className, title, subtitle, cracks = 0 }: 
     <LiquidGlass
       fillContainer
       cracks={cracks}
-      className={cn('rounded-xl', className)}
+      cornerRadius={42}
+      mode="polar"
+      displacementScale={72}
+      blurAmount={0.4}
+      saturation={210}
+      aberrationIntensity={11}
+      elasticity={0.25}
+      overLight={false}
+      className={cn('rounded-[42px]', className)}
     >
       {(title || subtitle) && (
         <div className="border-b border-white/10 px-4 py-3">
