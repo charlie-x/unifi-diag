@@ -5,7 +5,7 @@ import { useDevices } from '@/hooks/useDevices'
 import { GlassCard } from './ui/GlassCard'
 import { StatusBadge } from './ui/StatusBadge'
 import { SwitchPortGrid } from './SwitchPortGrid'
-import { formatUptime, getDeviceTypeName } from '@/lib/utils'
+import { formatUptime } from '@/lib/utils'
 import type { UnifiDevice } from '@/lib/types'
 
 function DeviceCard({ device }: { device: UnifiDevice }) {
@@ -29,7 +29,7 @@ function DeviceCard({ device }: { device: UnifiDevice }) {
           <div>
             <h4 className="font-medium text-white">{device.name}</h4>
             <p className="text-xs text-gray-400">
-              {getDeviceTypeName(device.type)} - {device.model}
+              {device.model}
             </p>
           </div>
         </div>

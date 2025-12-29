@@ -27,6 +27,19 @@ export interface UnifiPort {
   }
   media?: string
   locating?: boolean
+  // stp fields
+  stp_state?: string  // 'forwarding', 'blocking', 'learning', 'listening', 'disabled'
+  stp_pathcost?: number
+  stpf_portmode?: boolean  // stp fast port mode
+  is_uplink?: boolean
+  // aggregation
+  aggregated_by?: number  // lag master port
+  lacp_state?: number
+  // port profile
+  port_profile_id?: string
+  op_mode?: string  // 'switch', 'mirror', etc.
+  // autoneg
+  autoneg?: boolean
 }
 
 export interface UnifiUplink {
@@ -38,6 +51,20 @@ export interface UnifiUplink {
   speed?: number
   rssi?: number  // signal strength for wireless uplinks
   channel?: number
+}
+
+// detailed uplink info (separate from last_uplink, contains mesh AP parent details)
+export interface UnifiUplinkDetail {
+  uplink_mac: string
+  uplink_device_name: string
+  type: string  // 'wire' or 'wireless'
+  rssi?: number  // signal strength in dBm (e.g., -48)
+  signal?: number  // signal quality percentage
+  channel?: number
+  tx_rate?: number  // tx rate in bps
+  rx_rate?: number  // rx rate in bps
+  tx_rate_label?: string  // human readable (e.g., "1.1 Gbps")
+  name?: string
 }
 
 export interface UnifiDevice {
@@ -58,12 +85,18 @@ export interface UnifiDevice {
   total_max_power?: number
   port_table?: UnifiPort[]
   last_uplink?: UnifiUplink
+  uplink?: UnifiUplinkDetail  // detailed uplink info (has correct parent for mesh APs)
   lldp_table?: Array<{
     chassis_id: string
+    chassis_id_subtype?: string
     is_wired: boolean
     local_port_idx: number
     local_port_name: string
     port_id: string
+    port_description?: string
+    system_name?: string  // remote device hostname
+    system_description?: string
+    management_address?: string
   }>
 }
 
@@ -73,6 +106,15 @@ export interface UnifiClient {
   hostname?: string
   ip?: string
   oui?: string
+  // wired connection info
+  sw_mac?: string  // switch mac address
+  sw_port?: number  // switch port number
+  is_wired?: boolean
+  // wireless connection info
+  ap_mac?: string
+  channel?: number
+  radio?: string
+  signal?: number
 }
 
 export interface HealthAlert {

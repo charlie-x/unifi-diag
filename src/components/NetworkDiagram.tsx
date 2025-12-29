@@ -21,8 +21,10 @@ import { useDevices } from '@/hooks/useDevices'
 import { useClients } from '@/hooks/useDevices'
 import { useDiagram } from '@/contexts/DiagramContext'
 import { GlassCard } from './ui/GlassCard'
-import { formatSpeed, getDeviceTypeName } from '@/lib/utils'
-import type { UnifiDevice, UnifiPort } from '@/lib/types'
+import { PortTooltip } from './PortTooltip'
+import { APTooltip } from './APTooltip'
+import { formatSpeed } from '@/lib/utils'
+import type { UnifiDevice, UnifiPort, UnifiClient } from '@/lib/types'
 
 // speed colour mapping
 const speedColors: Record<string, string> = {
@@ -61,20 +63,35 @@ function PortDot({ port, small }: { port: UnifiPort; small?: boolean }) {
 }
 
 // device node with ports
-function DeviceNodeWithPorts({ data }: { data: { device: UnifiDevice; hasIssues: boolean; connectedPorts: Set<number>; isHighlighted?: boolean } }) {
-  const { device, hasIssues, connectedPorts, isHighlighted } = data
+function DeviceNodeWithPorts({ data }: { data: { device: UnifiDevice; hasIssues: boolean; connectedPorts: Set<number>; isHighlighted?: boolean; clients: UnifiClient[] } }) {
+  const { device, hasIssues, connectedPorts, isHighlighted, clients } = data
+
+  // check for critical issues (overheating, high errors)
+  const hasCriticalIssue = device.overheating ||
+    device.port_table?.some(p => p.rx_errors > 10000 || (p.sfp_temperature && parseFloat(p.sfp_temperature) > 80))
 
   const bgColor = device.state !== 1
     ? 'bg-gray-800/80'
+    : hasCriticalIssue
+    ? 'bg-red-900/40'
     : hasIssues
     ? 'bg-amber-900/40'
     : 'bg-green-900/30'
 
   const borderColor = device.state !== 1
     ? 'border-gray-600'
+    : hasCriticalIssue
+    ? 'border-red-500/70'
     : hasIssues
     ? 'border-amber-500/50'
     : 'border-green-500/50'
+
+  // pulsing effect for issues
+  const pulseClass = hasCriticalIssue
+    ? 'animate-pulse shadow-lg shadow-red-500/30'
+    : hasIssues
+    ? 'animate-[pulse_3s_ease-in-out_infinite] shadow-md shadow-amber-500/20'
+    : ''
 
   // highlight styling when zoomed to from alert
   const highlightClass = isHighlighted
@@ -92,8 +109,30 @@ function DeviceNodeWithPorts({ data }: { data: { device: UnifiDevice; hasIssues:
   const sfpPorts = device.port_table?.filter(p => p.media === 'SFP+' || p.name?.includes('SFP')) || []
   const regularPorts = device.port_table?.filter(p => p.media !== 'SFP+' && !p.name?.includes('SFP')) || []
 
+  // render AP as circular node
+  if (device.type === 'uap') {
+    return (
+      <APTooltip device={device}>
+        <div className={`${bgColor} ${borderColor} ${highlightClass} ${pulseClass} border rounded-full w-[120px] h-[120px] flex flex-col items-center justify-center backdrop-blur-sm transition-all duration-300 cursor-pointer`}>
+          <Handle type="target" position={Position.Top} className="!bg-gray-500 !w-2 !h-2" />
+          <Handle type="source" position={Position.Bottom} className="!bg-gray-500 !w-2 !h-2" />
+          <span className="font-mono text-gray-400 text-[9px]">{icon}</span>
+          <p className="font-medium text-white text-xs text-center px-2 truncate max-w-[100px]">{device.name}</p>
+          <p className="text-[9px] text-gray-400">{device.model}</p>
+          <p className="text-[8px] text-gray-500">{device.ip}</p>
+          {device.general_temperature && (
+            <p className={`text-[8px] ${device.general_temperature > 50 ? 'text-amber-400' : 'text-gray-500'}`}>
+              {device.general_temperature}C
+            </p>
+          )}
+        </div>
+      </APTooltip>
+    )
+  }
+
+  // render switches and gateways as rectangular nodes with ports
   return (
-    <div className={`${bgColor} ${borderColor} ${highlightClass} border rounded-lg px-3 py-2 min-w-[200px] backdrop-blur-sm transition-all duration-300`}>
+    <div className={`${bgColor} ${borderColor} ${highlightClass} ${pulseClass} border rounded-lg px-3 py-2 min-w-[200px] backdrop-blur-sm transition-all duration-300`}>
       {/* connection handles */}
       <Handle type="target" position={Position.Top} className="!bg-gray-500 !w-2 !h-2" />
       <Handle type="source" position={Position.Bottom} className="!bg-gray-500 !w-2 !h-2" />
@@ -107,29 +146,29 @@ function DeviceNodeWithPorts({ data }: { data: { device: UnifiDevice; hasIssues:
         </div>
       </div>
 
-      {/* port grid for switches */}
-      {device.type === 'usw' && device.port_table && (
+      {/* port grid for switches and gateways */}
+      {(device.type === 'usw' || device.type === 'udm' || device.type === 'ugw') && device.port_table && (
         <div className="space-y-1.5">
           {/* regular ports */}
           {regularPorts.length > 0 && (
             <div>
               <div className="flex flex-wrap gap-0.5">
                 {regularPorts.slice(0, 16).map(port => (
-                  <div
-                    key={port.port_idx}
-                    className={`w-4 h-4 rounded text-[8px] flex items-center justify-center font-mono ${
-                      connectedPorts.has(port.port_idx)
-                        ? 'ring-1 ring-white/50'
-                        : ''
-                    }`}
-                    style={{
-                      backgroundColor: port.up ? getSpeedColor(port.speed) + '40' : '#1f2937',
-                      borderLeft: `2px solid ${port.up ? getSpeedColor(port.speed) : '#374151'}`,
-                    }}
-                    title={`Port ${port.port_idx}: ${formatSpeed(port.speed)}`}
-                  >
-                    {port.port_idx}
-                  </div>
+                  <PortTooltip key={port.port_idx} port={port} device={device} clients={clients}>
+                    <div
+                      className={`w-4 h-4 rounded text-[8px] flex items-center justify-center font-mono cursor-pointer hover:ring-1 hover:ring-cyan-400/50 transition-all ${
+                        connectedPorts.has(port.port_idx)
+                          ? 'ring-1 ring-white/50'
+                          : ''
+                      }`}
+                      style={{
+                        backgroundColor: port.up ? getSpeedColor(port.speed) + '40' : '#1f2937',
+                        borderLeft: `2px solid ${port.up ? getSpeedColor(port.speed) : '#374151'}`,
+                      }}
+                    >
+                      {port.port_idx}
+                    </div>
+                  </PortTooltip>
                 ))}
               </div>
             </div>
@@ -139,21 +178,21 @@ function DeviceNodeWithPorts({ data }: { data: { device: UnifiDevice; hasIssues:
           {sfpPorts.length > 0 && (
             <div className="flex gap-1">
               {sfpPorts.map(port => (
-                <div
-                  key={port.port_idx}
-                  className={`px-1.5 py-0.5 rounded text-[8px] font-mono ${
-                    connectedPorts.has(port.port_idx)
-                      ? 'ring-1 ring-white/50'
-                      : ''
-                  }`}
-                  style={{
-                    backgroundColor: port.up ? getSpeedColor(port.speed) + '40' : '#1f2937',
-                    borderLeft: `2px solid ${port.up ? getSpeedColor(port.speed) : '#374151'}`,
-                  }}
-                  title={`SFP ${port.port_idx}: ${formatSpeed(port.speed)}${port.sfp_temperature ? ` ${parseFloat(port.sfp_temperature).toFixed(0)}C` : ''}`}
-                >
-                  S{port.port_idx - (regularPorts.length || 0)}
-                </div>
+                <PortTooltip key={port.port_idx} port={port} device={device} clients={clients}>
+                  <div
+                    className={`px-1.5 py-0.5 rounded text-[8px] font-mono cursor-pointer hover:ring-1 hover:ring-cyan-400/50 transition-all ${
+                      connectedPorts.has(port.port_idx)
+                        ? 'ring-1 ring-white/50'
+                        : ''
+                    }`}
+                    style={{
+                      backgroundColor: port.up ? getSpeedColor(port.speed) + '40' : '#1f2937',
+                      borderLeft: `2px solid ${port.up ? getSpeedColor(port.speed) : '#374151'}`,
+                    }}
+                  >
+                    S{port.port_idx - (regularPorts.length || 0)}
+                  </div>
+                </PortTooltip>
               ))}
             </div>
           )}
@@ -162,9 +201,9 @@ function DeviceNodeWithPorts({ data }: { data: { device: UnifiDevice; hasIssues:
 
       {/* stats row */}
       <div className="mt-1.5 flex items-center gap-2 text-[10px] text-gray-400">
-        <span>{getDeviceTypeName(device.type)}</span>
-        {device.type === 'usw' && (
-          <span>{activePorts.length}/{device.port_table?.length || 0} ports</span>
+        <span>{device.model}</span>
+        {(device.type === 'usw' || device.type === 'udm' || device.type === 'ugw') && device.port_table && (
+          <span>{activePorts.length}/{device.port_table.length} ports</span>
         )}
         {device.general_temperature && (
           <span className={device.general_temperature > 50 ? 'text-amber-400' : ''}>
@@ -182,14 +221,19 @@ const nodeTypes = {
 
 // calculate node dimensions based on port count
 function getNodeDimensions(device: UnifiDevice): { width: number; height: number } {
-  if (device.type === 'usw' && device.port_table) {
+  // APs are circular
+  if (device.type === 'uap') {
+    return { width: 120, height: 120 }
+  }
+  // switches and gateways with ports
+  if ((device.type === 'usw' || device.type === 'udm' || device.type === 'ugw') && device.port_table) {
     const portCount = device.port_table.length
     // width scales with port count (16 ports = ~280px, 48 ports = ~350px)
     const width = Math.max(250, 200 + Math.ceil(portCount / 8) * 25)
     const height = 140
     return { width, height }
   }
-  // gateways and APs
+  // fallback
   return { width: 200, height: 80 }
 }
 
@@ -230,7 +274,7 @@ function getLayoutedElements(
   return { nodes: layoutedNodes, edges }
 }
 
-function buildTopology(devices: UnifiDevice[]): { nodes: Node[]; edges: Edge[] } {
+function buildTopology(devices: UnifiDevice[], clients: UnifiClient[]): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = []
   const edges: Edge[] = []
 
@@ -241,14 +285,18 @@ function buildTopology(devices: UnifiDevice[]): { nodes: Node[]; edges: Edge[] }
   // create edges first to know connected ports
   devices.forEach((device) => {
     if (device.last_uplink) {
-      const parentDevice = devices.find(
-        (d) => d.name === device.last_uplink?.uplink_device_name
-      )
+      const isMesh = device.last_uplink.type === 'wireless'
+
+      // for mesh APs, use device.uplink.uplink_device_name (last_uplink shows "N/A")
+      const parentDeviceName = isMesh
+        ? device.uplink?.uplink_device_name
+        : device.last_uplink.uplink_device_name
+
+      const parentDevice = devices.find((d) => d.name === parentDeviceName)
 
       if (parentDevice) {
         const remotePort = device.last_uplink.uplink_remote_port
         const localPort = device.last_uplink.port_idx
-        const isMesh = device.last_uplink.type === 'wireless'
 
         // mark ports as connected (only for wired connections)
         if (!isMesh) {
@@ -256,12 +304,26 @@ function buildTopology(devices: UnifiDevice[]): { nodes: Node[]; edges: Edge[] }
           connectedPortsMap.get(device._id)?.add(localPort)
         }
 
-        // get link speed
+        // get link speed and signal info
         const uplinkPort = parentDevice.port_table?.find(
           (p) => p.port_idx === remotePort
         )
-        const speed = isMesh ? (device.last_uplink.speed || 0) : (uplinkPort?.speed || 0)
-        const speedLabel = isMesh ? 'Mesh' : formatSpeed(speed)
+        const speed = isMesh ? (device.uplink?.tx_rate || device.last_uplink.speed || 0) : (uplinkPort?.speed || 0)
+        const rssi = device.uplink?.rssi
+        const signal = device.uplink?.signal
+        const channel = device.uplink?.channel
+
+        // build speed label with mesh signal info
+        let speedLabel: string
+        if (isMesh) {
+          const rateLabel = device.uplink?.tx_rate_label || (speed > 0 ? formatSpeed(speed / 1000) : 'Mesh')
+          const signalInfo = rssi ? ` ${rssi}dBm` : (signal ? ` ${signal}%` : '')
+          const channelInfo = channel ? ` ch${channel}` : ''
+          speedLabel = `${rateLabel}${signalInfo}${channelInfo}`
+        } else {
+          speedLabel = formatSpeed(speed)
+        }
+
         const color = isMesh ? '#06b6d4' : getSpeedColor(speed) // cyan for mesh
 
         // build label
@@ -312,6 +374,7 @@ function buildTopology(devices: UnifiDevice[]): { nodes: Node[]; edges: Edge[] }
         device,
         hasIssues,
         connectedPorts: connectedPortsMap.get(device._id) || new Set(),
+        clients,
       },
     })
   })
@@ -321,6 +384,7 @@ function buildTopology(devices: UnifiDevice[]): { nodes: Node[]; edges: Edge[] }
 
 export function NetworkDiagram() {
   const { data, isLoading, error } = useDevices()
+  const { data: clientsData } = useClients()
   const { setReactFlowInstance, highlightedNodeId } = useDiagram()
 
   // track previous data to detect actual data changes vs highlight-only changes
@@ -328,9 +392,10 @@ export function NetworkDiagram() {
 
   const { initialNodes, initialEdges } = useMemo(() => {
     if (!data?.devices) return { initialNodes: [], initialEdges: [] }
-    const { nodes, edges } = buildTopology(data.devices)
+    const clients = clientsData?.clients || []
+    const { nodes, edges } = buildTopology(data.devices, clients)
     return { initialNodes: nodes, initialEdges: edges }
-  }, [data?.devices])
+  }, [data?.devices, clientsData?.clients])
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
@@ -442,7 +507,7 @@ export function NetworkDiagram() {
           <Background color="#374151" gap={20} size={1} />
           <Controls
             showInteractive={false}
-            className="!bg-gray-900/80 !border-white/10 !rounded-lg [&>button]:!bg-transparent [&>button]:!border-white/10 [&>button:hover]:!bg-white/10"
+            className="!bg-gray-900/80 !border-white/10 !rounded-lg [&>button]:!bg-transparent [&>button]:!border-white/10 [&>button:hover]:!bg-white/10 [&>button>svg]:!fill-white [&>button>svg>path]:!fill-white"
           />
         </ReactFlow>
       </div>
